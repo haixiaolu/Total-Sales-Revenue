@@ -14,8 +14,13 @@ The data provides information on customer's website site visit behavior. Custome
 
 ## The Results:
 
-| Model       | Method        |  Package        | Selection       | Hyperparameter      | R^2       | RMSE        |
-| :---        |   :---:       |     :---:       |     :---:       |       :---:         |   :---:   |   :---:     |                            
+| Model       | Method        | Package        | Selection       | Hyperparameter      | R^2       | RMSE        |
+| :---        |   :---:       |     :---:      |     :---:       |       :---:         |   :---:   |   :---:     | 
+| OLS         | lm            | stats          | step backward   | NA                  | 0.6300    | 1.238       |
+| Lasso       | Lasson(small) | elasticnet     | 0.07            | fraction            | 0.6301.   | 1.2388      |
+| Ridge       | ridge         | glmnet         | 0.001           | lambda              | 0.6301    | 1.2387      |
+| PLS         | pls           | pls            | 10              | components          | 0.6297    | 1.2392      |
+| ENR         | Elastic net   | glmnet         | 0.21, 0.006     | alpha, lambda       | 0.6299    | 1.2389.     |
 
 ## The approaches and problems that I had along the way
 
