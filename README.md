@@ -25,19 +25,18 @@ The data provides information on customer's website site visit behavior. Custome
 ## The approaches and problems that I had along the way
 
 I	did	try	to	use	model	stacking	to	improve	my	model	performance	when	I	built	my	base	
-model.	I	updated	seven	different	models	based	my	base	model. Although,	I	made	a	few	
-adjustments	and	it	improved	my	scores	from	0.96	to	0.89. I	guess	I	don’t	have	any	secret	
-sauce	based	on	my	Kaggle	scores	since	my	score	wasn’t	that	great.		However,	My	best	
+model.	I	updated	seven	different	models	based	my	base	model. Although,I	made	a	few	
+adjustments	and	it	improved	my	scores	from	0.96	to	0.89.	My	best	
 performing	model	is	using	backward	stepwise	to	find	the	features	that	related	most.	I	
 adjusted	my	model	so	many	times.	
 
 - My	first	approach was using	all	the	features	built	the	
 base	model,	and	I	used	stepwise	regression	to	automatically	filter	out	less	important	
-features.	Then,	I	compared	my	base	model	and	stepwise	regression model	to	see	which	one	was	performing	better.	
+features.	Then,	I	compared	my	base	model	and	stepwise	regression model to	see	which	one	was	performing	better.	
 
 - My	second	approach was	using	cross-validation	and	resampling,	
-such	as	during	my	lasso	regression	and	partinal	least	squares	modeling,	I	used	nfolds	and	
-number	of	resampling	to	train	my	model.	
+such	as	during	my	lasso	regression	and	partinal least squares	modeling,	I	used nfolds	and	
+number of resampling to	train	my	model.	
 
 - My	third	approach was	adding	new	features	to	
 the	data	set	and	using	both	first	and	second approaches	repeatly	to	train	my	models.	I	had	
