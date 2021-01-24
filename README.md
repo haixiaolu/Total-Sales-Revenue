@@ -39,9 +39,10 @@ such	as	during	my	lasso	regression	and	partinal least squares	modeling,	I	used n
 number of resampling to	train	my	model.	
 
 - My	third	approach was	adding	new	features	to	
-the	data	set	and	using	both	first	and	second approaches	repeatly	to	train	my	models.	I	had	
-so	many	problems	during	my	modeling	process,	most	of	them	were	related	my	lack	of	R	
-programming	knowledge.	I	got	so	many	different	errors	when	I	tried	to	run	my	scripts.	
-Google	and	TA	indeed	helped	me	so	much	for	sorting	thing	out.	Another	difficult	problem	
+the	data	set	and	using	both	first	and	second approaches	repeatly	to	train	my	models.	
+
+- I	had	so	many	problems	during	my	modeling	process,	most	of	them	were	related	my sort side of R	
+programming	knowledge. I	got	so	many	different	errors	when	I	tried	to	run	my	scripts.	
+Google indeed	helped	me	so	much	for	sorting	thing	out.	Another	difficult	problem	
 was	understanding	the	different	modeling	techniques	and	processing	conceptually,	I	have	
-to	go	back	to	watch	the	videos	over	and	over	again.	
+to	go	back to	reasearch the topic overand	over	again.	
