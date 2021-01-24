@@ -45,4 +45,4 @@ the	data	set	and	using	both	first	and	second approaches	repeatly	to	train	my	mod
 programming	knowledge. I	got	so	many	different	errors	when	I	tried	to	run	my	scripts.	
 Google indeed	helped	me	so	much	for	sorting	thing	out.	Another	difficult	problem	
 was	understanding	the	different	modeling	techniques	and	processing	conceptually,	I	have	
-to	go	back to	reasearch the topic overand	over	again.	
+to	go	back to	reasearch the topic over and	over	again.	
