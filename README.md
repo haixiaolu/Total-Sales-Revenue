@@ -1,6 +1,7 @@
 # Total-Sales-Revenue
-predict how much sales revenue can be expected from each customer based on their website site visit behaviors
-**NOTE:** This is a solo project which held on an internal competition between each classmate on Kaggle privately. 
+Predict how much sales revenue can be expected from each customer based on their website site visit behaviors 
+- **NOTE:** This is a solo project which held on an internal competition between each classmate on Kaggle privately. 
+- **Check the HTML Notebook**[here]()
 
 ## Background
 In many businesses, identifying which customers will make a purchase (and when) and how much will they spend, is a critical exercise. This is true for both brick-and-mortar outlets and online stores.
