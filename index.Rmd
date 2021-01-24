@@ -1,0 +1,1347 @@
+---
+title: "Total Sales Revenue"
+author: "HaiXiao Lu"
+output: 
+ html_document: 
+    toc: yes
+    theme: united
+    keep_md: yes
+    highlight: tango
+geometry: margin = 0.8in
+urlcolor: blue
+---
+
+\centering
+```{r, results='hide', warning=FALSE, message=FALSE}
+# import necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(mice)
+library(VIM)
+library(ggbiplot)
+library(MASS)
+library(caret)
+library("Rtsne")
+#library(dplyr)
+library(lubridate)
+library(magrittr)
+library(gridExtra) # display two graph, for grid.arrange
+library(data.table)
+library(stats)
+library(elasticnet)
+library(MASS)
+library(earth)
+library(AppliedPredictiveModeling)
+library(glmnet)
+```
+# (a) Conduct An Exploratory Data Analysis
+
+```{r, results='hide', warning= FALSE, message=FALSE}
+# Acquire Data
+#read in the data
+train_df <- read.csv("Train.csv")
+test_df <- read.csv("Test.csv")
+glimpse(train_df)
+glimpse(test_df)
+
+# avaiable features in the dataset
+colnames(train_df)
+```
+
+## Which features are categorical ? (list 6 categorical variables)
+```{r, echo = TRUE}
+# Categorical features
+char <- select_if(train_df, is.character)
+head(colnames(char))
+```
+
+## Which features are numerical? (list 6 numeric varaibles)
+```{r, echo = TRUE}
+# which features are numerical?
+head(colnames(select_if(train_df, is.numeric)))
+```
+
+```{r, include = TRUE}
+## Check the overall dataset info
+# data summary
+dim(train_df)
+dim(test_df)
+```
+
+
+# Explore Data Analysis
+
+## EDA1. Univariate Analyses Using Different Plot
+
+  ### Scatter Plot of Continent vs. Revenue by Pageviews
+```{r, echo = TRUE}
+ggplot(data = train_df, aes(x=continent, y = revenue)) +
+    geom_point(aes(color = pageviews))
+```
+
+#### Findings: 
+This graph gives us a rough idea which continent has the highest revenue, and it also include what are the pageviews in each continent. This may not accurate because we have a lot of miss values included. However, we still can get a general idea that Americas spent the most money and visited most pages. We also get an outlier that above 15000 dollars in Americas. 
+
+
+### Scatter Plot of Revenue verus Pageviews 
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+ggplot(data = train_df, aes(x =pageviews, y =revenue )) +
+  geom_point() 
+  
+```
+
+#### Findings:
+This graph doesn't show a strong relationship between pageviews and revenue, but it showed some relationship. Most pageviews range were between 0 and 100, and most of their spendings were below 5000 dollars. As the pageviews increases, it seems that revenue did not go up. There was an outlier in the graph maybe the missing values caused it. 
+
+
+### Facet Plot between Revenue vs. IsMobile by Continent
+```{r, echo = TRUE}
+ggplot(data = train_df, aes(x = isMobile, y = revenue, color = continent)) +
+  geom_point() + 
+  facet_wrap(~ continent, nrow = 3)
+```
+
+#### Findings:
+From this graph we can see majority of customer did not use mobile phone to shop. 
+
+## Customer that bought something
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+train_df <- train_df %>% 
+              mutate(target_class = ifelse(as.numeric(revenue) > 0, 1, 0))
+train_df %>%
+  group_by(date) %>%
+  dplyr::summarise(cust_perc = 100 * sum(target_class) / n()) %>%
+  ggplot(aes(x = ymd(date), y = cust_perc)) +
+  geom_line(colours = "black", size = 0.5) +
+  geom_smooth(method = "loess", 
+              formula = y ~ x,
+              size = 1.5) +
+  ylab("(%) of Customers Bought Something ") +
+  xlab("Date")
+```
+
+### Interpertation:
+At this point, we can't tell any obvious trend. But we can see up and downs periodically. I think those ups and downs might have something to do with week and weekends. 
+
+
+## Density Plot of Other Features
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+
+g <- ggplot(data = train_df, aes(x = custId, fill = channelGrouping)) +
+     geom_density(alpha=0.5)
+
+
+
+g1 <- ggplot(data = train_df, aes(x = custId, fill = deviceCategory)) +
+      geom_density(alpha=0.5)
+
+
+g2 <- ggplot(data = train_df, aes(x = custId, fill = continent)) +
+      geom_density(alpha=0.5)
+
+
+g3 <- ggplot(data = train_df, aes(x = custId, fill = campaign)) +
+      geom_density(alpha=0.5)
+
+grid.arrange(g, g1)
+grid.arrange(g2, g3)
+
+```
+
+### Findings:
+From all these density plots, we can get some general ideas about what kind of device category most customer use; which channel group has the most customers; which campaign are most customers response to well.  
+
+## EDA2. Check out the target variable
+```{r, echo = TRUE}
+# transaction time and total revenue
+y <- train_df$revenue # save the original values in a vector
+train_df$revenue <- train_df$revenue   
+train_df %>%
+  filter(revenue > 0) %>%
+  dplyr::summarize(
+    "number of transaction"  = n(), 
+    'total revenues train set' = sum(revenue)
+    )
+  
+```
+
+### Findings:
+There are 5849 transcation in the train dataset. Unless I am wrong here, this is a really high converting rate 3.28% per day in an one year period. The sale's revenue is 712279.2 USD that year. 
+
+## Check out the dollar spent more than 1000
+```{r, echo = TRUE}
+# find min and max dollars spent
+# min(train_df[train_df$revenue>0, 35])
+# max(train_df$revenue)
+
+# check out the dollar spent more than 1000
+train_df %>% 
+    filter(revenue >= 1000) %>%
+    dplyr::summarise('above 1000 USD transaction' = n(),
+                     'sum revenues of transactions above 1000 USD' = sum(revenue))
+```
+
+### Findings:
+The range of revenues per transaction is from 0.01 to 15980.79 USD. Of the 5849 transactions, 84 had revenues of at least 1000 USD. The sum of revenues of this tail is about 149708 USD. 
+
+
+### Plots of revenue that below 1000 USD
+```{r, echo = TRUE}
+train_df %>% 
+  dplyr::filter(revenue > 0 & revenue < 1000) %>%
+  ggplot(aes(x=revenue)) + 
+      geom_histogram(fill = 'blue', binwidth = 20) +
+      scale_x_continuous(breaks = seq(0, 1000, by = 100), labels = comma)
+  
+```
+
+### Findings:
+As this plot shows, the distribution of revenues is very right skewed, with the tail reaching to the max amount spent (15980 USD). This histogram only display the transaction with revenues below 1000 USD.
+
+
+### Revenue by Date
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+train_df$date <- ymd(train_df$date)
+p1 <- train_df %>% 
+          group_by(date) %>%
+          dplyr::summarise(dailySession = n(), .groups = 'drop') %>%
+          ggplot(aes(x = date, y = dailySession)) +
+          geom_line(col = 'blue') + 
+          scale_y_continuous(labels = comma) + 
+          geom_smooth(method = 'loess', col = 'red') +
+          labs(x = " ", y = "Sessions per Day") +
+          scale_x_date(date_breaks = "1 month", date_labels = "%b %d")
+
+p2 <- train_df %>% 
+        group_by(date) %>% 
+        dplyr::summarise(dailyRevenue = sum(revenue)) %>%
+        ggplot(aes(x=date, y=dailyRevenue)) + 
+        geom_line(col='blue') +
+        scale_y_continuous(labels=comma) + 
+        geom_smooth(col='red') +
+        labs(x="", y="Daily Revenues (USD)") + 
+        scale_x_date(date_breaks = "1 month", date_labels = "%b %d")
+
+grid.arrange(p1,p2)
+```
+
+### Findings:
+The number of daily sessions peaked in October through middle of December, but this did not lead to high revenues. In the revenue plot, we can see highest daily revenue generated between September and October about more than 15000 USD. I think during this period, it generated highest dollar amount that spent (15980 USD).
+
+## 2. Bivariate Analyses
+
+  ## Scatter plot of all the numeric data
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+pairs(select_if(train_df, is.numeric))
+```
+
+### Findings:
+From this scatter plot of all the numerical data that we can't tell much of relationship between each feature. At this point, we are not sure because of the missingness of the dataset or they don't relate much initially. But we still can see some information of important relationships between custId, visitStartTime, pageviews and revenue.
+
+## EDA3.Correlation
+```{r,  echo= TRUE}
+# visualize the relationship of the target variable with each of the correlated variable  
+p <- train_df %>%
+        dplyr::select(pageviews) %>%
+        bind_cols(as_tibble(y)) %>%
+        filter(value > 0) %>%
+        ggplot(aes(x=pageviews, y = log1p(value))) +
+        geom_point() +
+        labs(x = "pageviews", y = "revenue") +
+        geom_smooth(method = "lm",formula = y~x, se = FALSE,color = 'red') +
+        theme_minimal()
+
+cp <- train_df %>%
+        dplyr::select(visitNumber) %>%
+        bind_cols(as_tibble(y)) %>%
+        filter(value > 0) %>%
+        ggplot(aes(x = visitNumber, y = log1p(value))) +
+        geom_point() +
+        labs(x = "visitNumber", y = "revenue") +
+        geom_smooth(method = "lm", formula = y~x,  se = FALSE, color = 'red') +
+        theme_minimal()
+
+grid.arrange(p, cp)
+
+```
+
+### Findings:
+From these two plots, we can see there is a positive correlation between revenue vs. pageviews and revenue vs.visitNumber. It kind of make sense though, as people visit the website more often and view more pages, it usually end up buying something, so the revenue goes up as time expands. We need to explore more with these two features. These features can play an important role when we build our model. 
+
+
+### Visiualize the relationship between revenue versus IsTrueDirect
+```{r, echo = TRUE}
+ggplot(data = train_df, aes(x = factor(isTrueDirect), y = revenue)) +
+  geom_boxplot(col = "blue") + labs(x = "Is True Direct") 
+```
+
+### Findings:
+We can see there is an outlier in the plot and this outlier is enough to produce a high correlation coefficient. We can see the relationship between isTrueDirect and revenue is not linear. So I guess this is not much of relationship between isTrueDirect and revenue.
+
+
+## 3. Multivariate Analyses
+
+## EDA4. Overall Missing Proportion and Pattern of Missingness
+```{r, echo = TRUE}
+# Overall missing proportion
+cat("The overall missing proportion is: ", mean(is.na(train_df)))
+# md.pairs(train_df)
+# md.pattern(train_df)
+aggr(train_df)
+
+```
+
+### Findings:
+Whether visually or summary we can see that there are a few features have more than 90% of the data are missing such as adwordsClickInfo.page, aswordsClickInfo.isVideoAd, bounces and newVisits. We can not determine how useful are these features to the predict model at this point yet,  however, it's too difficult to impute all the missing values because it will affect our model accuracy even if we impute it.  We might just delete all these features later when we start to build the model. 
+
+
+## EDA5.PCA Analysis
+```{r, echo = TRUE, warning=FALSE, message=FALSE}
+# filter out redundant variables
+train_df$date <- ymd(train_df$date)
+train_df$country <- as.factor(train_df$country)
+unique_data <- unique(train_df)
+
+# create maxtrix
+train_pca <- as.matrix(unique(train_df[,c("sessionId", "custId", "visitStartTime", "visitNumber", "timeSinceLastVisit","isMobile","isTrueDirect", "revenue")]))
+
+# use prcomp to compute PCA
+pca <- prcomp(train_pca, center = TRUE, scale. = TRUE)
+summary(pca)
+```
+
+### Look at PCA Screeplots
+```{r, include = TRUE}
+#options(repr.plot.height = 20)
+g1 <- ggscreeplot(pca, type = "pev")
+g2 <- ggscreeplot(pca, type = "cev")
+```
+```{r, echo = FALSE, fit.width = 3.5, fit.height = 3.5}
+# display ggscreeplots
+options(repr.plot.height = 6)
+grid.arrange(g1, g2)
+
+```
+
+
+### Findings:
+From the pca summary table and those two screeplot, we can definite reduce the dimension around 6. From the summary of pca, we can see that PC6 explains 91% of the total variance. From the screeplots, we can see that there is a break point at PC6. OR we can just reduce to PC4 which based on Cumulative Proportion greater than 68%.  However, this pca might not be accurate because we have 3 features such as, pageviews, bounces and adwordsClickInfo.page are not included. Those features have too many missing values. 
+
+
+# (b). Data Preparation(DP)
+
+## DP1. Deletion and Impution Missing Values
+
+### Missing value info
+```{r, echo = TRUE}
+# check which features have missing values
+NAcols <- which(colSums(is.na(train_df)) > 0)
+NAcount <- sort(colSums(sapply(train_df[NAcols], is.na)), decreasing = TRUE)
+
+# check out the percentage of missingness per variable
+myfun <- function(x) mean(is.na(x))
+
+# check which features are containing missing values
+tail(apply(train_df, 2, myfun) > 0)
+```
+
+### Percent missing 
+```{r, echo=TRUE}
+# compute percentage of the missing values
+options(repr.plot.height = 4)
+NADF <- data.frame(variable = names(NAcount), missing = NAcount)
+NADF$PectMissing <- round((NADF$missing/nrow(train_df)*100), 2)
+# plot the features that contain missing value
+mp <- NADF %>%
+      ggplot(aes(x = reorder(variable, PectMissing), y = PectMissing)) +
+      geom_bar(stat = 'identity', fill = 'red') + coord_flip(y = c(0, 110)) + 
+      labs(x = "", y = "Percent Missing") + 
+      geom_text(aes(label=paste0(PectMissing, '%'), hjust = -0.1))
+
+
+mp1 <- data.table(
+        pmiss = sapply(train_df, function(x) { (sum(is.na(x)) / length(x)) }),
+        column = names(train_df)
+        ) %>% 
+      ggplot(aes(x = reorder(column, -pmiss), y = pmiss)) +
+      geom_bar(stat = 'identity', fill = 'steelblue') + 
+      scale_y_continuous(labels = scales::percent) + 
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+      labs(
+          #title='Missing data by feature',
+          x='Feature',
+          y='% missing')
+
+grid.arrange(mp, mp1)
+```
+
+### Findings:
+Either from the Missing values info or Percentage of Missingness, we can see that both adwordsClickInfo.page and adwordsClickInfo.isVideoAd features have more than 97% of missing values. I am just going to delete this two features later. At this point, I am thinking about to compute as binary(0 and 1, or TRUE and FALSE) for bounces and newVisits. I found what interesting is that the plot did not show the missingness of pageviews due to my figure size. Although it's only 0.01% missing values of the total dataset. It caused a huge problem later when I tried to built models. 
+
+
+### Deleting Some Missing Value Features
+```{r, echo = TRUE}
+train_df <- subset(train_df,select = -c(adwordsClickInfo.page, adwordsClickInfo.isVideoAd))
+
+# delete test missing values
+test_df <- subset(test_df,select = -c(adwordsClickInfo.page, adwordsClickInfo.isVideoAd))
+
+dim(train_df)
+dim(test_df)
+```
+
+### Interperation: 
+Since both adwordsClickInfo.page and adwordsClickInfo.isVideoAd  features have more than 97% of the missing values. Even if I impute all the missing values in these two features. I have a very low percentage of accuracy. So deletion is just make more sense in this case.
+
+### Imputation of missing values
+```{r, echo = TRUE}
+# setting missing values to zero(percentage missing in train is 58.1%)
+train_df$bounces[is.na(train_df$bounces)] <- 0L
+test_df$bounces[is.na(test_df$bounces)] <- 0L
+train_df %>%
+  filter(bounces == 1) %>%
+  dplyr::summarise('number of bounces' = n(),
+                   'revenue bounce sessions' = sum(revenue))
+
+# setting missing values to one(percentage missing in train is 0.01%)
+train_df$pageviews[is.na(train_df$pageviews)] <- 0L
+test_df$pageviews[is.na(test_df$pageviews)] <- 0L # test set doesn't make sense
+#------------------
+# mice package, logreg method to impute missing value
+# ?logreg
+#------------------------------------
+train_df %>%
+  filter(pageviews == 1) %>%
+  dplyr::summarise('number of 1-page sessions' = n(),
+                   'revenue 1-page session' = sum(revenue))
+
+# set missing value for newVisit to 0 since 1 is first time, otherwise is null
+
+train_df$newVisits[is.na(train_df$newVisits)] <- 0L
+test_df$newVisits[is.na(test_df$newVisits)] <- 0L
+
+
+```
+
+### Interperation:
+Bounce is samliar to "One pageview" of pageviews feature. As we see there are 29352 total bounces and 29504 1-page views. The revenue usually takes 2-page session to generate; which means a transaction needs at least 2 pageviews; first we would select a product, then go the the second page to pay. So with 1-page session, the revenue should be 0 that like our output. However, we can see that the zero revenues are also correct for the 29512 sessions with pageviews == 1. Thus, I think we can fix the discrepancy with setting all those 1-page session to bounce == 1
+
+## DP2. Transformations and Aggregation
+```{r, include=TRUE, warning=FALSE, message=FALSE}
+# converting the date format
+train_df$date <- ymd(train_df$date)
+
+# test data set
+test_df$date <- ymd(test_df$date)
+
+
+# # convert raw dates to r data class
+aggregateDataTest <- function(train_df){
+
+  train_df$date <- as.Date(as.character(train_df$date))
+
+  # get months for each date
+  train_df$month <- month(train_df$date)
+  # aggregate data based on custId
+    groupedData = train_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+          # average time since last visit
+          ,meantimeSinceLastVisit = mean(timeSinceLastVisit)
+
+              #percent of visits by month
+              ,pJan = length(month[month==1])/n()
+              ,pFeb = length(month[month==2])/n()
+              ,pMar = length(month[month==3])/n()
+              ,pApr = length(month[month==4])/n()
+              ,pMay = length(month[month==5])/n()
+              ,pJun = length(month[month==6])/n()
+              ,pJul = length(month[month==7])/n()
+              ,pAug = length(month[month==8])/n()
+              ,pSep = length(month[month==9])/n()
+              ,pOct = length(month[month==10])/n()
+              ,pNov = length(month[month==11])/n()
+              ,pDec = length(month[month==12])/n())
+    return(groupedData)
+
+}
+
+fixed_train <- aggregateDataTest(train_df)
+glimpse(fixed_train)
+which(colSums(is.na(fixed_train)) > 0)
+```
+
+### Explanation:
+Transformed character type of Date to Date format. Then use function to extract the individual month from Date feature. Then use aggregation to calculate each customer's average SinceLastVisit time and also calculate the percentage of each month that has customer visited. 
+
+
+## DP3. Collapsing Categories and Feature Extraction
+```{r, results='hide', warning=FALSE, message=FALSE}
+aggregateDateTest <- function(train_df1) {
+
+  groupedData = train_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+
+                # count by type of channelGrouping
+              ,Social = length(channelGrouping[channelGrouping == 'Social'])
+              ,OrgSearch = length(channelGrouping[channelGrouping == 'Organic Search'])
+              ,Direct = length(channelGrouping[channelGrouping == 'Direct'])
+              ,PaidSearch = length(channelGrouping[channelGrouping == 'Paid Search'])
+              ,Referral = length(channelGrouping[channelGrouping == 'Referral' ])
+              ,Display = length(channelGrouping[channelGrouping == 'Display'])
+              ,Affiliates = length(channelGrouping[channelGrouping == 'Affiliates'])
+              ,Other = length(channelGrouping[channelGrouping == '(Other)'])
+
+              # count by browser
+              ,Chrome = length(browser[browser == 'Chrome'])
+              ,Safari = length(browser[browser == 'Safari'])
+              ,Firefox = length(browser[browser == 'Firefox'])
+              ,InternetExplorer = length(browser[browser == 'Internet Explorer'])
+              ,Edge = length(browser[browser == 'Edge'])
+              ,BrowserOther = length(browser[(browser != 'Edge'
+                                                   & browser != 'Chrome'
+                                                   & browser != 'Safari'
+                                                   & browser != 'Firefox'
+                                                   & browser != 'Internet Explorer')])
+
+              # count by OS
+              ,Macintosh = length(operatingSystem[operatingSystem=='Macintosh'])
+              ,Windows = length(operatingSystem[operatingSystem=='Windows'])
+              ,Android = length(operatingSystem[operatingSystem=='Android'])
+              ,iOS = length(operatingSystem[operatingSystem=='iOS'])
+              ,ChromeOS = length(operatingSystem[operatingSystem=='Chrome OS'])
+              ,Linux = length(operatingSystem[operatingSystem=='Linux'])
+              ,OSOther = length(browser[(operatingSystem !='Macintosh'
+                                              & operatingSystem !='Windows'
+                                              & operatingSystem !='Android'
+                                              & operatingSystem !='iOS'
+                                              & operatingSystem !='Chrome OS'
+                                              & operatingSystem !='Linux')])
+
+            # create device variables
+              ,Desktop = length(deviceCategory[deviceCategory=='desktop'])
+              ,Mobile = length(deviceCategory[deviceCategory=='mobile'])
+              ,Tablet = length(deviceCategory[deviceCategory=='tablet'])
+
+      )
+  return(groupedData)
+
+}
+fixed_train <- aggregateDateTest(train_df1)
+
+```
+
+### Explanation: 
+Collapsed browser, operatingSystem, deviceCategory and ChannelGrouping features, and extracted sub-features from each feature into new single feature. For example, we don't have a huge browser feature which contains all kind of browsers anymore. Now we have single feature like chrome, safari...etc.
+
+## DP4. Aggregatations, Feature Extraction, Collapsing Categories
+```{r, results='hide', warning=FALSE, message=FALSE}
+# create function 
+aggregateDataTest <- function(train_df2) {
+
+    # aggregate data based on custId
+    groupedData = train_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+
+              #create continent variables
+              ,cntAmericas = length(continent[continent=='Americas'])
+              ,cntAsia = length(continent[continent=='Asia'])
+              ,cntEurope = length(continent[continent=='Europe'])
+              ,cntOceania = length(continent[continent=='Oceania'])
+              ,cntNull = length(continent[continent==""])
+
+              #create country variables for top 10
+              ,US = length(country[country=="United States"])
+              ,India = length(country[country=="India"])
+              ,UK = length(country[country=="United Kingdom"])
+              ,Canada = length(country[country=="Canada"])
+              ,Vietnam = length(country[country=="Vietnam"])
+              ,Turkey = length(country[country=="Turkey"])
+              ,Thailand = length(country[country=="Thailand"])
+              ,Germany = length(country[country=="Germany"])
+              ,Brazil = length(country[country=="Brazil"])
+              ,Japan = length(country[country=="Japan"])
+              ,CountryOther = length(country[(country !='United States'
+                                                   & country !='India'
+                                                   & country !='United Kingdom'
+                                                   & country !='Canada'
+                                                   & country !='Vietnam'
+                                                   & country !='Turkey'
+                                                   & country !='Thailand'
+                                                   & country !='Germany'
+                                                   & country !='Brazil'
+                                                   & country !='Japan'
+
+              )])
+              #top 10 sources
+              ,srcGoogle = length(source[source=="google"])
+              ,srcyoutube = length(source[source=="youtube.com"])
+              ,srcDirect = length(source[source=="(direct)"])
+              ,srcGooglePlex = length(source[source=="mall.googleplex.com"])
+              ,srcPartners = length(source[source=="Partners"])
+              ,srcGoogleAnalytics = length(source[source=="analytics.google.com"])
+              ,srcDfa = length(source[source=="dfa"])
+              ,srcGoogleCom = length(source[source=="google.com"])
+              ,srcGoogleSites = length(source[source=="sites.google.com"])
+              ,srcFacebook = length(source[source=="m.facebook.com"])
+              ,srcOther = length(source[(  source !='google'
+                                                    & source !='youtube.com'
+                                                    & source !='(direct)'
+                                                    & source !='mall.googleplex.com'
+                                                    & source !='Partners'
+                                                    & source !='analytics.google.com'
+                                                    & source !='dfa'
+                                                    & source !='google.com'
+                                                    & source !='sites.google.com'
+                                                    & source !='m.facebook.com'
+              )])
+              #medium variables
+              ,medOrganic = length(medium[medium=="organic"])
+              ,medReferral = length(medium[medium=="referral"])
+              ,medNull = length(medium[medium] == "")
+              ,medCpc = length(medium[medium=="cpc"])
+              ,medAffiliate = length(medium[medium=="affiliate"])
+              ,medCpm = length(medium[medium=="cpm"])
+
+      )
+    return(groupedData)
+}
+fixed_train <- aggregateDataTest(train_df2)
+              
+```
+
+### Explanation: 
+Using collapsing categories and feature extraction to create new category. Extracted several individual features from one feature, such as created 5 different continent features after extracted from continent feature. Also, some new features were created like, countryOther, continentNull, ect. 
+
+
+## DP5. Aggregation, Feature Engineering
+```{r, results='hide', warning=FALSE, message=FALSE}
+# create function
+aggregateDataTest <- function(train_df) {
+
+    # aggregate data based on custId
+    groupedData = train_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+
+              #create sum of pageviews
+              ,sumPageViews = sum(pageviews)
+
+              # create log sum of revenue
+              ,logSumRevenue = log(sum(revenue) + 1)
+
+      )
+
+    # return dataset
+   return(groupedData)
+}
+
+
+#an example application of the function
+fixed_train <- aggregateDataTest(train_df)
+
+```
+
+### Explanation: 
+Use aggregation to aggregate customer based sum of pageviews and log of sum revenue. This will help to build the model and obey the rules for log of sum revenue 
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# # combine all the data prepartion into one dataset
+
+ aggregateDataTest <- function(train_df){
+
+  train_df$date <- as.Date(as.character(train_df$date))
+    # creat3 a weekday use wday function of lubridate
+  train_df$weekday = wday(train_df$date)
+  train_df$visitStartTime = as.POSIXct(train_df$visitStartTime, origin = "1970-01-01")
+
+  # get months for each date
+  train_df$month <- month(train_df$date)
+
+
+  # aggregate data based on custId
+    groupedData = train_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+          # average time since last visit
+          ,meantimeSinceLastVisit = mean(timeSinceLastVisit)
+
+              #percent of visits by month
+              ,pJan = length(month[month==1])/n()
+              ,pFeb = length(month[month==2])/n()
+              ,pMar = length(month[month==3])/n()
+              ,pApr = length(month[month==4])/n()
+              ,pMay = length(month[month==5])/n()
+              ,pJun = length(month[month==6])/n()
+              ,pJul = length(month[month==7])/n()
+              ,pAug = length(month[month==8])/n()
+              ,pSep = length(month[month==9])/n()
+              ,pOct = length(month[month==10])/n()
+              ,pNov = length(month[month==11])/n()
+              ,pDec = length(month[month==12])/n()
+
+     # count by type of channelGrouping
+              ,Social = length(channelGrouping[channelGrouping == 'Social'])
+              ,OrgSearch = length(channelGrouping[channelGrouping == 'Organic Search'])
+              ,Direct = length(channelGrouping[channelGrouping == 'Direct'])
+              ,PaidSearch = length(channelGrouping[channelGrouping == 'Paid Search'])
+              ,Referral = length(channelGrouping[channelGrouping == 'Referral' ])
+              ,Display = length(channelGrouping[channelGrouping == 'Display'])
+              ,Affiliates = length(channelGrouping[channelGrouping == 'Affiliates'])
+              ,Other = length(channelGrouping[channelGrouping == '(Other)'])
+
+              # count by browser
+              ,Chrome = length(browser[browser == 'Chrome'])
+              ,Safari = length(browser[browser == 'Safari'])
+              ,Firefox = length(browser[browser == 'Firefox'])
+              ,InternetExplorer = length(browser[browser == 'Internet Explorer'])
+              ,Edge = length(browser[browser == 'Edge'])
+              ,BrowserOther = length(browser[(browser != 'Edge'
+                                                   & browser != 'Chrome'
+                                                   & browser != 'Safari'
+                                                   & browser != 'Firefox'
+                                                   & browser != 'Internet Explorer')])
+
+              # count by OS
+              ,Macintosh = length(operatingSystem[operatingSystem=='Macintosh'])
+              ,Windows = length(operatingSystem[operatingSystem=='Windows'])
+              ,Android = length(operatingSystem[operatingSystem=='Android'])
+              ,iOS = length(operatingSystem[operatingSystem=='iOS'])
+              ,ChromeOS = length(operatingSystem[operatingSystem=='Chrome OS'])
+              ,Linux = length(operatingSystem[operatingSystem=='Linux'])
+              ,OSOther = length(browser[(operatingSystem !='Macintosh'
+                                              & operatingSystem !='Windows'
+                                              & operatingSystem !='Android'
+                                              & operatingSystem !='iOS'
+                                              & operatingSystem !='Chrome OS'
+                                              & operatingSystem !='Linux')])
+
+            # create device variables
+              ,Desktop = length(deviceCategory[deviceCategory=='desktop'])
+              ,Mobile = length(deviceCategory[deviceCategory=='mobile'])
+              ,Tablet = length(deviceCategory[deviceCategory=='tablet'])
+
+              #create continent variables
+              ,cntAmericas = length(continent[continent=='Americas'])
+              ,cntAsia = length(continent[continent=='Asia'])
+              ,cntEurope = length(continent[continent=='Europe'])
+              ,cntOceania = length(continent[continent=='Oceania'])
+              ,cntNull = length(continent[continent==""])
+
+              #create country variables for top 10
+              ,US = length(country[country=="United States"])
+              ,India = length(country[country=="India"])
+              ,UK = length(country[country=="United Kingdom"])
+              ,Canada = length(country[country=="Canada"])
+              ,Vietnam = length(country[country=="Vietnam"])
+              ,Turkey = length(country[country=="Turkey"])
+              ,Thailand = length(country[country=="Thailand"])
+              ,Germany = length(country[country=="Germany"])
+              ,Brazil = length(country[country=="Brazil"])
+              ,Japan = length(country[country=="Japan"])
+              ,CountryOther = length(country[(country !='United States'
+                                                   & country !='India'
+                                                   & country !='United Kingdom'
+                                                   & country !='Canada'
+                                                   & country !='Vietnam'
+                                                   & country !='Turkey'
+                                                   & country !='Thailand'
+                                                   & country !='Germany'
+                                                   & country !='Brazil'
+                                                   & country !='Japan'
+
+              )])
+              #top 10 sources
+              ,srcGoogle = length(source[source=="google"])
+              ,srcyoutube = length(source[source=="youtube.com"])
+              ,srcDirect = length(source[source=="(direct)"])
+              ,srcGooglePlex = length(source[source=="mall.googleplex.com"])
+              ,srcPartners = length(source[source=="Partners"])
+              ,srcGoogleAnalytics = length(source[source=="analytics.google.com"])
+              ,srcDfa = length(source[source=="dfa"])
+              ,srcGoogleCom = length(source[source=="google.com"])
+              ,srcGoogleSites = length(source[source=="sites.google.com"])
+              ,srcFacebook = length(source[source=="m.facebook.com"])
+              ,srcOther = length(source[(  source !='google'
+                                                    & source !='youtube.com'
+                                                    & source !='(direct)'
+                                                    & source !='mall.googleplex.com'
+                                                    & source !='Partners'
+                                                    & source !='analytics.google.com'
+                                                    & source !='dfa'
+                                                    & source !='google.com'
+                                                    & source !='sites.google.com'
+                                                    & source !='m.facebook.com'
+              )])
+              #medium variables
+              ,medOrganic = length(medium[medium=="organic"])
+              ,medReferral = length(medium[medium=="referral"])
+              ,medNull = length(medium[medium] == "")
+              ,medCpc = length(medium[medium=="cpc"])
+              ,medAffiliate = length(medium[medium=="affiliate"])
+              ,medCpm = length(medium[medium=="cpm"])
+
+              
+              ,hourOfDay = hour(visitStartTime)
+
+              ,isMobile = ifelse(isMobile, 1L, 0L)
+
+              ,isTrueDirect = ifelse(isTrueDirect, 1L, 0L)
+
+              #create sum of pageviews
+              ,logPageViews = log(sum(pageviews))
+
+              # log of newVisit
+              ,lognewVisits = sum(newVisits)
+
+              # create log sum of revenue
+              ,logSumRevenue = log(sum(revenue) + 1)
+
+
+      )
+    return(groupedData)
+
+}
+
+fixed_train <- aggregateDataTest(train_df)
+glimpse(fixed_train)
+fixed_train[!complete.cases(fixed_train),]
+which(colSums(is.na(fixed_train))>0)
+```
+
+
+# (c). Preparing Modeling   
+```{r message=FALSE, warning=FALSE, results='hide'}
+# apply to test dataset
+ aggregateDataTest1 <- function(test_df){
+
+  test_df$date <- as.Date(as.character(test_df$date))
+  test_df$visitStartTime = as.POSIXct(test_df$visitStartTime, origin = "1970-01-01")
+
+  # get months for each date
+  test_df$month <- month(test_df$date)
+  # aggregate data based on custId
+    groupedData <- test_df %>%
+      group_by(custId) %>%
+      dplyr::summarise(recordCount = n()
+          # average time since last visit
+          ,meantimeSinceLastVisit = mean(timeSinceLastVisit)
+
+
+              #percent of visits by month
+              ,pJan = length(month[month==1])/n()
+              ,pFeb = length(month[month==2])/n()
+              ,pMar = length(month[month==3])/n()
+              ,pApr = length(month[month==4])/n()
+              ,pMay = length(month[month==5])/n()
+              ,pJun = length(month[month==6])/n()
+              ,pJul = length(month[month==7])/n()
+              ,pAug = length(month[month==8])/n()
+              ,pSep = length(month[month==9])/n()
+              ,pOct = length(month[month==10])/n()
+              ,pNov = length(month[month==11])/n()
+              ,pDec = length(month[month==12])/n()
+
+     # count by type of channelGrouping
+              ,Social = length(channelGrouping[channelGrouping == 'Social'])
+              ,OrgSearch = length(channelGrouping[channelGrouping == 'Organic Search'])
+              ,Direct = length(channelGrouping[channelGrouping == 'Direct'])
+              ,PaidSearch = length(channelGrouping[channelGrouping == 'Paid Search'])
+              ,Referral = length(channelGrouping[channelGrouping == 'Referral' ])
+              ,Display = length(channelGrouping[channelGrouping == 'Display'])
+              ,Affiliates = length(channelGrouping[channelGrouping == 'Affiliates'])
+              ,Other = length(channelGrouping[channelGrouping == '(Other)'])
+
+              # count by browser
+              ,Chrome = length(browser[browser == 'Chrome'])
+              ,Safari = length(browser[browser == 'Safari'])
+              ,Firefox = length(browser[browser == 'Firefox'])
+              ,InternetExplorer = length(browser[browser == 'Internet Explorer'])
+              ,Edge = length(browser[browser == 'Edge'])
+              ,BrowserOther = length(browser[(browser != 'Edge'
+                                                   & browser != 'Chrome'
+                                                   & browser != 'Safari'
+                                                   & browser != 'Firefox'
+                                                   & browser != 'Internet Explorer')])
+
+              # count by OS
+              ,Macintosh = length(operatingSystem[operatingSystem=='Macintosh'])
+              ,Windows = length(operatingSystem[operatingSystem=='Windows'])
+              ,Android = length(operatingSystem[operatingSystem=='Android'])
+              ,iOS = length(operatingSystem[operatingSystem=='iOS'])
+              ,ChromeOS = length(operatingSystem[operatingSystem=='Chrome OS'])
+              ,Linux = length(operatingSystem[operatingSystem=='Linux'])
+              ,OSOther = length(browser[(operatingSystem !='Macintosh'
+                                              & operatingSystem !='Windows'
+                                              & operatingSystem !='Android'
+                                              & operatingSystem !='iOS'
+                                              & operatingSystem !='Chrome OS'
+                                              & operatingSystem !='Linux')])
+
+            # create device variables
+              ,Desktop = length(deviceCategory[deviceCategory=='desktop'])
+              ,Mobile = length(deviceCategory[deviceCategory=='mobile'])
+              ,Tablet = length(deviceCategory[deviceCategory=='tablet'])
+
+              #create continent variables
+              ,cntAmericas = length(continent[continent=='Americas'])
+              ,cntAsia = length(continent[continent=='Asia'])
+              ,cntEurope = length(continent[continent=='Europe'])
+              ,cntOceania = length(continent[continent=='Oceania'])
+              ,cntNull = length(continent[continent==""])
+
+              #create country variables for top 10
+              ,US = length(country[country=="United States"])
+              ,India = length(country[country=="India"])
+              ,UK = length(country[country=="United Kingdom"])
+              ,Canada = length(country[country=="Canada"])
+              ,Vietnam = length(country[country=="Vietnam"])
+              ,Turkey = length(country[country=="Turkey"])
+              ,Thailand = length(country[country=="Thailand"])
+              ,Germany = length(country[country=="Germany"])
+              ,Brazil = length(country[country=="Brazil"])
+              ,Japan = length(country[country=="Japan"])
+              ,CountryOther = length(country[(country !='United States'
+                                                   & country !='India'
+                                                   & country !='United Kingdom'
+                                                   & country !='Canada'
+                                                   & country !='Vietnam'
+                                                   & country !='Turkey'
+                                                   & country !='Thailand'
+                                                   & country !='Germany'
+                                                   & country !='Brazil'
+                                                   & country !='Japan'
+
+              )])
+              #top 10 sources
+              ,srcGoogle = length(source[source=="google"])
+              ,srcyoutube = length(source[source=="youtube.com"])
+              ,srcDirect = length(source[source=="(direct)"])
+              ,srcGooglePlex = length(source[source=="mall.googleplex.com"])
+              ,srcPartners = length(source[source=="Partners"])
+              ,srcGoogleAnalytics = length(source[source=="analytics.google.com"])
+              ,srcDfa = length(source[source=="dfa"])
+              ,srcGoogleCom = length(source[source=="google.com"])
+              ,srcGoogleSites = length(source[source=="sites.google.com"])
+              ,srcFacebook = length(source[source=="m.facebook.com"])
+              ,srcOther = length(source[(  source !='google'
+                                                    & source !='youtube.com'
+                                                    & source !='(direct)'
+                                                    & source !='mall.googleplex.com'
+                                                    & source !='Partners'
+                                                    & source !='analytics.google.com'
+                                                    & source !='dfa'
+                                                    & source !='google.com'
+                                                    & source !='sites.google.com'
+                                                    & source !='m.facebook.com'
+              )])
+              #medium variables
+              ,medOrganic = length(medium[medium=="organic"])
+              ,medReferral = length(medium[medium=="referral"])
+              ,medNull = length(medium[medium] == "")
+              ,medCpc = length(medium[medium=="cpc"])
+              ,medAffiliate = length(medium[medium=="affiliate"])
+              ,medCpm = length(medium[medium=="cpm"])
+     
+              ,hourOfDay = hour(visitStartTime)
+
+              ,isMobile = ifelse(isMobile, 1L, 0L)
+              ,isTrueDirect = ifelse(isTrueDirect, 1L, 0L)
+
+               #create sum of pageviews
+              ,logPageViews = log(sum(pageviews))
+
+              # log of newVisit
+              ,lognewVisits = sum(newVisits)
+
+
+
+      )
+    return(groupedData)
+
+ }
+fixed_test <- aggregateDataTest1(test_df)
+glimpse(fixed_test)
+
+```
+
+
+```{r, results='hide'}
+
+which(colSums(is.na(fixed_train)) > 0)
+ # remove singlularity
+ fixed_tr <- fixed_train[,apply(fixed_train, 2, var, na.rm=TRUE) != 0]
+
+ #remove high cor
+tr_df <- cor(fixed_train)
+tr_df[upper.tri(tr_df)] <- 0
+diag(tr_df) <- 0
+ tr_new <- fixed_train[,!apply(tr_df, 2, function(x) any (x >0.99))]
+head(tr_new)
+```
+
+### Explaination:
+I did a few adjustments back and forth over times. First, I did some filtering to move the singlularities from the data frame to improve my model performance. Second,I also removed all the high correlated value from my data frame. Third, I adjusted some features' settings, for example, when I original built the model, my pageview feature just one single number, then later after my original model, I adjusted to sum of pageviews per customer, it improved my model's accuracy 10% more. Final, I added some more features to imporve my original model, such as isMobile and isTrueDirect. It indeeded help me improved a lot. My first model's adjusted R square is 46%, after this final adjustment my model was 62%. 
+
+
+# (d). Modeling
+## Modeling
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Linear model, bootstrap resampling
+fit <- lm(data = tr_new, logSumRevenue~.,)
+summary(fit)
+anova(fit)
+RSS <- c(crossprod(fit$residuals))
+MSE <- RSS / length(fit$residuals)
+RMSE <- sqrt(MSE)
+
+
+
+# model 7
+fit7 <- update (fit, ~.-recordCount -  meantimeSinceLastVisit-pOct-Mobile-srcGoogle - pJul -
+                 Chrome - Desktop - cntAsia - cntOceania - srcDirect - srcOther - cntEurope-
+                  pApr - pJan - srcyoutube- srcDfa - cntNull - Germany - srcGoogleAnalytics-
+                  srcGoogleCom - srcFacebook - CountryOther - Japan - Tablet - Linux - iOS-
+                  Windows - Safari - pSep - pJun - pFeb - OSOther - pMar - custId - Other -
+                  srcPartners - medOrganic - medReferral - medNull - medCpc - medAffiliate-
+                  medCpm)
+summary(fit7)
+anova(fit7)
+RSS <- c(crossprod(fit7$residuals))
+MSE <- RSS / length(fit7$residuals)
+RMSE7 <- sqrt(MSE)
+# revise model, exclude some variables that contains high p value
+fit1 <- update(fit, ~.-Social-Other - OrgSearch
+               - Direct - PaidSearch - Referral -
+                 Display - Affiliates - srcGoogle -
+                 srcyoutube - srcGooglePlex - srcPartners - srcDirect -
+                 srcGoogleAnalytics - srcDfa - srcGoogleCom -
+                 srcGoogleSites - srcFacebook - srcOther - medOrganic - medCpc -
+                 medAffiliate - medCpm - medNull - medReferral)
+summary(fit1)
+RSS <- c(crossprod(fit1$residuals))
+MSE <- RSS / length(fit1$residuals)
+RMSE1 <- sqrt(MSE)
+
+# revise model
+fit2 <- update(fit, ~. -Chrome - Safari - Firefox -
+                 InternetExplorer - Edge - BrowserOther)
+
+summary(fit2)
+RSS <- c(crossprod(fit2$residuals))
+MSE <- RSS / length(fit2$residuals)
+RMSE2 <- sqrt(MSE)
+
+# revise model
+fit3 <- update(fit, ~. -cntAmericas - cntAsia - cntEurope -
+    cntOceania - cntNull)
+summary(fit3)
+RSS <- c(crossprod(fit3$residuals))
+MSE <- RSS / length(fit3$residuals)
+RMSE3 <- sqrt(MSE)
+
+# revise model
+fit4 <- update(fit, ~. -Macintosh - Windows - Android - iOS -
+              ChromeOS - Linux - OSOther)
+summary(fit4)
+RSS <- c(crossprod(fit4$residuals))
+MSE <- RSS / length(fit4$residuals)
+RMSE4 <- sqrt(MSE)
+
+
+fit5 <- update(fit, ~.  - Desktop - Mobile - Tablet)
+summary(fit5)
+RSS <- c(crossprod(fit5$residuals))
+MSE <- RSS / length(fit5$residuals)
+RMSE5 <- sqrt(MSE)
+
+fit6 <- update(fit, ~.-pJan - pFeb - pMar - pApr
+            -pMay - pAug - pSep -  pJun - pJul  -
+                pOct- pNov - pDec )
+summary(fit6)
+RSS <- c(crossprod(fit6$residuals))
+MSE <- RSS / length(fit6$residuals)
+RMSE6 <- sqrt(MSE)
+
+RMSE
+RMSE1
+RMSE2
+RMSE3
+RMSE4
+RMSE5
+RMSE6
+RMSE7
+
+##---------------use caret package-----------------
+library(caret)
+fit_caret <- train(logSumRevenue~.,
+                   data = tr_new,
+                   method = "lm")
+
+fit_caret
+summary(fit_caret)
+fit_caret$finalModel
+
+# adjust resampling parameters using "trControl"
+myControl <- trainControl(method = "cv", number =10)
+
+fit_caret1 <- train(logSumRevenue~.,
+                    data = fixed_tr,
+                    method = "lasso",
+                    trControl = myControl,
+                    tuneLength = 50)
+
+fit_caret1
+plot(fit_caret1)
+
+## specifying exactly the hyperparameter values to use with "expand.grid"
+fixed_tr <- fixed_train[,apply(fixed_train, 2, var, na.rm=TRUE) != 0]
+lasso_grid <- expand.grid(fraction = seq(0.5, 0.99, length = 100))
+
+fit_caret2 <- train(logSumRevenue~.,
+                    data = fixed_tr,
+                    method = "lasso",
+                    trControl = myControl,
+                    tuneGrid = lasso_grid)
+
+fit_caret2
+plot(fit_caret2)
+
+
+
+```
+
+
+# Stepwise Regression
+```{r, results='hide', warning=FALSE, message = FALSE}
+
+# fit a linear model and now focus on fixing multicollinearity
+model.ls <- fit
+coef(model.ls)
+# compute the mean of residual sum of squares
+rss.ls <- sum(model.ls$residuals^2) / model.ls$df.residual
+
+# -------stepwise regression------
+
+## backward stepwise
+model.backward <- step(model.ls, direction = "backward")
+summary(model.backward)
+rss.backward <- sum(model.backward$residuals^2) / model.backward$df.residual
+RSS <- c(crossprod(model.backward$residuals))
+MSE <- RSS / length(model.backward$residuals)
+RMSE_backward <- sqrt(MSE)
+
+
+## Forward step
+scope <- list(upper=~logSumRevenue ~ custId  + meantimeSinceLastVisit +
+    pJan + pFeb + pMar + pApr + pMay + pJun +
+    pJul + pAug + pSep + pOct + pNov + pDec +
+    Referral +  Other +
+    Chrome + Safari + Firefox + InternetExplorer +
+    Edge + BrowserOther + Macintosh + Windows +
+    Android + iOS + ChromeOS + Linux + OSOther +
+    Desktop + Mobile + Tablet + cntAmericas +
+    cntAsia + cntEurope + cntOceania + cntNull + US +
+    India + UK + Canada + Vietnam + Turkey +
+    Thailand + Germany + Brazil + Japan +
+    CountryOther  + srcyoutube + srcGooglePlex +
+  srcGoogleAnalytics + srcGoogleCom +
+    srcGoogleSites + srcFacebook + medOrganic + medCpc +
+    medAffiliate + logPageViews + isMobile + isTrueDirect, lower = ~.)
+
+models.forward <- step(lm(logSumRevenue ~ 1, data = tr_new),
+                      scope, direction = "forward")
+summary(models.forward)
+RSS <- c(crossprod(models.forward$residuals))
+MSE <- RSS / length(models.forward$residuals)
+RMSE_forward <- sqrt(MSE)
+
+rss.forward <- sum(models.forward$resid^2)/models.forward$df.residual
+
+
+# both backward and forward
+model.both <- stepAIC(fit, direction = "both")
+summary(model.both)
+model.both$anova
+RSS <- c(crossprod(model.both$residuals))
+MSE <- RSS / length(model.both$residuals)
+RMSE_both <- sqrt(MSE)
+
+```
+
+
+## Ridge Regression
+```{r,results='hide', warning=FALSE, message=FALSE}
+# ridge
+y <- as.numeric(unlist(tr_new[,68]))    #target variable
+x <- as.matrix(tr_new[,1:67])
+
+
+lambdas <- 10^seq(2, -3, by = -.1)
+cv_ridge <- cv.glmnet(x, y, alpha = 0, lambda = lambdas)
+summary(cv_ridge)
+optimal_lambda <- cv_ridge$lambda.min
+optimal_lambda
+
+# compute R^2 from true and predicted values
+eval_results <- function(true, predicted, df){
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(df))
+
+
+  # Model performance metrics
+data.frame(
+  RMSE = RMSE,
+  Rsquare = R_square
+)
+
+}
+
+# prediction and evaluation on train data
+predictions_train <- predict(cv_ridge, s = optimal_lambda, newx = x)
+
+eval_results(y, predictions_train, tr_new)
+
+
+
+```
+
+## Lasso Regression
+```{r, results='hide', warning=FALSE, message=FALSE}
+
+
+y <- as.numeric(unlist(tr_new[,68]))    #target variable
+x <- as.matrix(tr_new[,1:67])
+
+# setting alpha = 1 implements lasso regression
+lasso_reg <- cv.glmnet(x, y, alpha = 1,
+                       lambda = lambdas,
+                       standardize = TRUE,
+                       nfolds = 5)
+
+# best lambda
+lambda_best <- lasso_reg$lambda.min
+lambda_best
+
+lasso_model <- glmnet(x, y, alpha = 1,
+                      lambda = lambda_best,
+                      standardize = TRUE)
+
+predictions_train <- predict(lasso_model, s = lambda_best, newx = x)
+eval_results(y, predictions_train, tr_new)
+
+```
+
+
+## Partinal Least squares
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(pls)
+
+set.seed(1243)
+model_pls <- train(logSumRevenue~., data = tr_new,
+                   method = "pls",
+                   scale = TRUE,
+                   trControl = trainControl("cv", number = 10),
+                   tuneLength = 10)
+
+plot(model_pls)
+
+#print the best tuning parameter
+model_pls$bestTune
+summary(model_pls$finalModel)
+
+predictions_train <- predict(model_pls, s = model_pls$bestTune, newx = x)
+eval_results(y, predictions_train, tr_new)
+
+
+```
+
+## Elastic Net Regression
+```{r, results='hide'}
+train_ctr <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5,
+                          search = "random",
+                          verboseIter = TRUE)
+
+# Train the model
+elastic_reg <- train(logSumRevenue~.,
+                     data = tr_new,
+                     method = "glmnet",
+                     preProcess = c("center", "scale"),
+                     tnueLength = 10,
+                     trControl = train_ctr)
+
+#best tune parameter
+elastic_reg$bestTune
+
+# Make predictions on training set
+predictions_train <- predict(elastic_reg, x)
+eval_results(y, predictions_train, tr_new) 
+
+
+```
+
+
+
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+## Predict
+
+# pred <- predict(fit, fixed_test)
+# pred1 <- predict(fit1, fixed_test)
+# pred2 <- predict(fit2, fixed_test)
+# pred3 <- predict(fit3, fixed_test)
+# pred4 <- predict(fit4, fixed_test)
+# pred5 <- predict(fit5, fixed_test)
+# pred6 <- predict(fit6, fixed_test)
+# pred7 <- predict(model.backward, fixed_test)
+# pred8 <- predict(models.forward, fixed_test) # 62.95
+# pred9 <- predict(model.both, fixed_test) # 62.99
+# pred10 <- predict(pls.model, fixed_test)
+# pred11 <- predict(model_lasso,fixed_test)
+# pred12 <- predict(fit_caret1, fixed_test)
+# pred13 <- predict(fit_caret2,fixed_test)
+# ridge.pred <- predict(model.ridge,fixed_test)
+
+#pred
+#pred1
+#pred2
+#pred3
+#pred4
+#pred5
+#pred6
+#pred7
+#pred8
+#pred9
+#pred10
+#pred11
+#pred12
+#pred13
+
+```
+
+
+```{r, include = FALSE}
+ # Create Submission File preparing to submit on Kaggle -->
+ # create submission data frame -->
+ #submission003<- data.frame(custId=fixed_test$custId, predRevenue = pred7)
+
+ # create csv file -->
+ #write.csv(submission003, "submission004.csv", row.names = FALSE) 
+
+```
+```{r, include = FALSE, warning=FALSE}
+# reduce duplicates
+#subDF1 <- read.csv("submission004.csv") 
+#l <- subDF1[!duplicated(subDF1$custId),]
+#l$predRevenue[l$predRevenue < 0 ] <- 0 
+
+#write.csv(l, "submission005.csv", row.names = FALSE)
+```
+\centering
+
